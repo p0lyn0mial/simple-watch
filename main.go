@@ -8,11 +8,13 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/rest"
+
+    "github.com/openshift/library-go/pkg/config/helpers"
+	configv1 "github.com/openshift/api/config/v1"
 )
 
 func main() {
-	config, err := rest.InClusterConfig()
+	config, err := helpers.GetKubeConfigOrInClusterConfig("", configv1.ClientConnectionOverrides{})
 	if err != nil {
 		panic(err.Error())
 	}
