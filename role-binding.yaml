@@ -3,8 +3,8 @@ apiVersion: rbac.authorization.k8s.io/v1
 # You need to already have a Role named "pod-reader" in that namespace.
 kind: RoleBinding
 metadata:
-  name: read-secrets
-  namespace: test-01
+  name: read-cm
+  namespace: kube-system
 subjects:
 # You can specify more than one "subject"
 - kind: ServiceAccount
@@ -12,5 +12,5 @@ subjects:
 roleRef:
   # "roleRef" specifies the binding to a Role / ClusterRole
   kind: Role #this must be Role or ClusterRole
-  name: secret-reader # this must match the name of the Role or ClusterRole you wish to bind to
+  name: cm-reader # this must match the name of the Role or ClusterRole you wish to bind to
   apiGroup: rbac.authorization.k8s.io

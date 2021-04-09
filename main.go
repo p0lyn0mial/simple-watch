@@ -1,48 +1,43 @@
 package main
 
 import (
-	"context"
-	"fmt"
-	"k8s.io/apimachinery/pkg/api/meta"
+	"flag"
 	"time"
 
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	kubeinformers "k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/rest"
+	"k8s.io/klog/v2"
+
+	"github.com/openshift/library-go/pkg/config/helpers"
+	configv1 "github.com/openshift/api/config/v1"
 )
 
+
 func main() {
-	config, err := rest.InClusterConfig()
+	var kubeConfig string
+	var stopCh chan struct{}
+
+	klog.InitFlags(flag.CommandLine)
+	flag.StringVar(&kubeConfig, "kubeconfig", "", "")
+	flag.Parse()
+
+	klog.Info("starting the app")
+
+	config, err := helpers.GetKubeConfigOrInClusterConfig(kubeConfig, configv1.ClientConnectionOverrides{})
 	if err != nil {
 		panic(err.Error())
 	}
-	clientset, err := kubernetes.NewForConfig(config)
+	config.Timeout = 10 * time.Second
+
+	client, err := kubernetes.NewForConfig(config)
 	if err != nil {
 		panic(err.Error())
 	}
 
-	for {
-		watchCh, err := clientset.CoreV1().Secrets("test-01").Watch(context.TODO(), metav1.ListOptions{})
-		if err != nil {
-			panic(err.Error())
-		}
-
-		watchStart := time.Now()
-		fmt.Println("starting watching Secrets in test-01 ns")
-		for {
-			event, ok := <-watchCh.ResultChan()
-			if !ok {
-				fmt.Println("watch closed")
-				break
-			}
-			objMeta, err := meta.Accessor(event.Object)
-			if err != nil {
-				fmt.Println(fmt.Sprintf("got %v event, unable to get meta, err %v", event.Type, err))
-				continue
-			}
-			fmt.Println(fmt.Sprintf("got %v event: object name %v", event.Type, objMeta.GetName()))
-		}
-		fmt.Println(fmt.Sprintf("watch ended, took %v", time.Now().Sub(watchStart)))
-	}
+	klog.Info("starting configmap informer")
+	kubeInformerFactory := kubeinformers.NewSharedInformerFactory(client, time.Second*30)
+	cmInformer := kubeInformerFactory.Core().V1().ConfigMaps().Informer()
+	cmInformer.Run(stopCh)
+	klog.Info("done, exiting")
 }
 
