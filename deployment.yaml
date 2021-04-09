@@ -16,4 +16,7 @@ spec:
     spec:
       containers:
       - name: simple-watch
-        image: quay.io/polynomial/simple-watch@sha256:5fbe487ea7d38c262ffc746ccf7b9f420b1b08f4fa5357057aacfeb6a9e32ac8
+        command: ["app"]
+        args:
+          - --v=10
+        image: quay.io/polynomial/simple-watch@sha256:77bd5bb70fe86ce09250c56c2c51e7bc5607f291acd7cdfd5be0098839217888

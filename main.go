@@ -1,48 +1,57 @@
 package main
 
 import (
-	"context"
+	"flag"
 	"fmt"
-	"k8s.io/apimachinery/pkg/api/meta"
+	configv1 "github.com/openshift/api/config/v1"
+	"k8s.io/klog/v2"
 	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/rest"
+	"k8s.io/apiserver/pkg/server/dynamiccertificates"
+
+	"github.com/openshift/library-go/pkg/config/helpers"
 )
 
+
+const (
+	authenticationConfigMapNamespace = metav1.NamespaceSystem
+	// authenticationConfigMapName is the name of ConfigMap in the kube-system namespace holding the root certificate
+	// bundle to use to verify client certificates on incoming requests before trusting usernames in headers specified
+	// by --requestheader-username-headers. This is created in the cluster by the kube-apiserver.
+	// "WARNING: generally do not depend on authorization being already done for incoming requests.")
+	authenticationConfigMapName = "extension-apiserver-authentication"
+)
+
+
 func main() {
-	config, err := rest.InClusterConfig()
+	klog.InitFlags(flag.CommandLine)
+	flag.Parse()
+	klog.Info("starting the app")
+
+	var kubeConfig string
+	flag.StringVar(&kubeConfig, "kubeconfig", "", "")
+
+	config, err := helpers.GetKubeConfigOrInClusterConfig(kubeConfig, configv1.ClientConnectionOverrides{})
 	if err != nil {
 		panic(err.Error())
 	}
-	clientset, err := kubernetes.NewForConfig(config)
+	config.Timeout = 10 * time.Second
+
+	client, err := kubernetes.NewForConfig(config)
 	if err != nil {
 		panic(err.Error())
 	}
 
-	for {
-		watchCh, err := clientset.CoreV1().Secrets("test-01").Watch(context.TODO(), metav1.ListOptions{})
-		if err != nil {
-			panic(err.Error())
-		}
-
-		watchStart := time.Now()
-		fmt.Println("starting watching Secrets in test-01 ns")
-		for {
-			event, ok := <-watchCh.ResultChan()
-			if !ok {
-				fmt.Println("watch closed")
-				break
-			}
-			objMeta, err := meta.Accessor(event.Object)
-			if err != nil {
-				fmt.Println(fmt.Sprintf("got %v event, unable to get meta, err %v", event.Type, err))
-				continue
-			}
-			fmt.Println(fmt.Sprintf("got %v event: object name %v", event.Type, objMeta.GetName()))
-		}
-		fmt.Println(fmt.Sprintf("watch ended, took %v", time.Now().Sub(watchStart)))
+	clientCAProvider, err := dynamiccertificates.NewDynamicCAFromConfigMapController("client-ca", authenticationConfigMapNamespace, authenticationConfigMapName, "client-ca-file", client)
+	if err != nil {
+		panic(fmt.Errorf("unable to load configmap based client CA file: %v", err))
 	}
+
+	var stopCh chan struct{}
+	klog.Info("starting dynamic ca config map controller")
+	clientCAProvider.Run(1, stopCh)
+	klog.Info("done, exiting")
 }
 
